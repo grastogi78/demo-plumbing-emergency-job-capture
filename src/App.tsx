@@ -17,7 +17,8 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-type View = "intake" | "confirmation" | "dispatch" | "notifications" | "queue";
+type AppRoute = "customer" | "confirmation" | "office";
+type OfficeTab = "queue" | "dispatch" | "notifications";
 type Priority = "Critical" | "Urgent" | "Routine";
 type CustomerTone = "High" | "Medium" | "Low";
 
@@ -92,12 +93,10 @@ const initialIntake: IntakeData = {
   media: [],
 };
 
-const navItems: Array<{ id: View; label: string }> = [
-  { id: "intake", label: "Intake" },
-  { id: "confirmation", label: "Confirmation" },
+const officeNavItems: Array<{ id: OfficeTab; label: string }> = [
+  { id: "queue", label: "Office Queue" },
   { id: "dispatch", label: "Dispatch Summary" },
   { id: "notifications", label: "Notification Preview" },
-  { id: "queue", label: "Office Queue" },
 ];
 
 const questions = [
@@ -127,15 +126,6 @@ const questions = [
     options: ["Yes", "No", "Not sure"],
   },
 ] as const;
-
-const hashRoutes: Record<string, View> = {
-  "#intake": "intake",
-  "#confirmation": "confirmation",
-  "#dispatch": "dispatch",
-  "#notifications": "notifications",
-  "#queue": "queue",
-  "#office": "queue",
-};
 
 const demoQueueItems: QueueItem[] = [
   {
@@ -217,9 +207,26 @@ const demoQueueItems: QueueItem[] = [
   },
 ];
 
-function getInitialView(): View {
-  if (typeof window === "undefined") return "intake";
-  return hashRoutes[window.location.hash] ?? "intake";
+function getRoute(): AppRoute {
+  if (typeof window === "undefined") return "customer";
+  if (window.location.pathname === "/office" || window.location.pathname === "/dashboard") return "office";
+  if (window.location.pathname === "/confirmation") return "confirmation";
+  return "customer";
+}
+
+function isDemoMode() {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("demo") === "1";
+}
+
+function pathWithDemo(path: string) {
+  return isDemoMode() ? `${path}?demo=1` : path;
+}
+
+function getInitialOfficeTab(): OfficeTab {
+  if (typeof window === "undefined") return "queue";
+  const tab = new URLSearchParams(window.location.search).get("tab");
+  return tab === "dispatch" || tab === "notifications" ? tab : "queue";
 }
 
 function formatSubmittedTime(value: string) {
@@ -345,23 +352,21 @@ function createSummary(data: IntakeData): DispatchSummary {
 }
 
 function App() {
-  const [view, setView] = useState<View>(getInitialView);
+  const [route, setRoute] = useState<AppRoute>(getRoute);
   const [step, setStep] = useState(0);
   const [intake, setIntake] = useState<IntakeData>(initialIntake);
   const summary = useMemo(() => createSummary(intake), [intake]);
 
   useEffect(() => {
-    const onHashChange = () => setView(getInitialView());
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
+    const onPopState = () => setRoute(getRoute());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  const navigate = (nextView: View) => {
-    setView(nextView);
-    const nextHash = nextView === "intake" ? "#intake" : `#${nextView}`;
-    if (window.location.hash !== nextHash) {
-      window.history.pushState(null, "", nextHash);
-    }
+  const navigateRoute = (nextRoute: AppRoute) => {
+    const nextPath = nextRoute === "customer" ? "/" : nextRoute === "office" ? "/office" : "/confirmation";
+    setRoute(nextRoute);
+    window.history.pushState(null, "", pathWithDemo(nextPath));
   };
 
   const updateField = (field: keyof IntakeData, value: string) => {
@@ -378,15 +383,16 @@ function App() {
   const submitIntake = (event: FormEvent) => {
     event.preventDefault();
     setIntake((current) => ({ ...current, submittedAt: new Date().toISOString() }));
-    setView("confirmation");
-    window.history.pushState(null, "", "#confirmation");
+    setRoute("confirmation");
+    window.history.pushState(null, "", pathWithDemo("/confirmation"));
   };
 
   return (
     <div className="min-h-screen bg-stone-100 text-slate-950">
-      <TopNav active={view} onSelect={navigate} showInternal={view !== "intake" && view !== "confirmation"} />
+      {route === "office" ? <OfficeHeader onCustomerView={() => navigateRoute("customer")} /> : <CustomerHeader />}
+      {isDemoMode() && route !== "office" && <DemoSwitch onOfficeView={() => navigateRoute("office")} />}
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {view === "intake" && (
+        {route === "customer" && (
           <IntakeFlow
             data={intake}
             step={step}
@@ -396,10 +402,8 @@ function App() {
             onSubmit={submitIntake}
           />
         )}
-        {view === "confirmation" && <Confirmation data={intake} />}
-        {view === "dispatch" && <DispatchSummaryView data={intake} summary={summary} onNotifications={() => navigate("notifications")} />}
-        {view === "notifications" && <NotificationPreview data={intake} summary={summary} />}
-        {view === "queue" && <OfficeQueue onOpen={() => navigate("dispatch")} />}
+        {route === "confirmation" && <Confirmation data={intake} />}
+        {route === "office" && <OfficeDashboard data={intake} summary={summary} />}
       </main>
       <footer className="mx-auto max-w-7xl px-4 pb-6 text-center text-xs leading-5 text-slate-500 sm:px-6 lg:px-8">
         Demo only. This tool summarizes customer-reported information and does not diagnose repairs, quote prices, or
@@ -409,35 +413,88 @@ function App() {
   );
 }
 
-function TopNav({ active, onSelect, showInternal }: { active: View; onSelect: (view: View) => void; showInternal: boolean }) {
+function CustomerHeader() {
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-red-700">
-            {showInternal ? "Emergency intake demo" : "24/7 emergency intake"}
-          </p>
-          <h1 className="text-xl font-semibold text-slate-950">
-            {showInternal ? "Emergency plumbing intake workflow" : "Emergency Plumbing Help"}
-          </h1>
+          <p className="text-sm font-semibold uppercase tracking-wide text-red-700">24/7 emergency intake</p>
+          <h1 className="text-xl font-semibold text-slate-950">Emergency Plumbing Help</h1>
         </div>
-        {showInternal && (
+      </div>
+    </header>
+  );
+}
+
+function OfficeHeader({ onCustomerView }: { onCustomerView: () => void }) {
+  return (
+    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-red-700">Internal demo view</p>
+          <h1 className="text-xl font-semibold text-slate-950">Plumbing Office Operations Dashboard</h1>
+        </div>
+        <button
+          onClick={onCustomerView}
+          className="inline-flex items-center justify-center rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Customer Intake
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function DemoSwitch({ onOfficeView }: { onOfficeView: () => void }) {
+  return (
+    <button
+      onClick={onOfficeView}
+      className="fixed right-4 top-20 z-30 rounded-md border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-600 shadow-panel hover:bg-slate-50"
+    >
+      Office View
+    </button>
+  );
+}
+
+function OfficeDashboard({ data, summary }: { data: IntakeData; summary: DispatchSummary }) {
+  const [activeTab, setActiveTab] = useState<OfficeTab>(getInitialOfficeTab);
+
+  const changeTab = (tab: OfficeTab) => {
+    setActiveTab(tab);
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", tab);
+    const query = params.toString();
+    window.history.replaceState(null, "", `/office${query ? `?${query}` : ""}`);
+  };
+
+  return (
+    <section className="grid gap-6">
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-panel">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Office/dispatcher experience</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Today's emergency intake workbench</h2>
+          </div>
           <nav className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
-            {navItems.map((item) => (
+            {officeNavItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => onSelect(item.id)}
+                onClick={() => changeTab(item.id)}
                 className={`whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition ${
-                  active === item.id ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  activeTab === item.id ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                 }`}
               >
                 {item.label}
               </button>
             ))}
           </nav>
-        )}
+        </div>
       </div>
-    </header>
+
+      {activeTab === "queue" && <OfficeQueue onOpen={() => changeTab("dispatch")} />}
+      {activeTab === "dispatch" && <DispatchSummaryView data={data} summary={summary} onNotifications={() => changeTab("notifications")} />}
+      {activeTab === "notifications" && <NotificationPreview data={data} summary={summary} />}
+    </section>
   );
 }
 
@@ -467,7 +524,7 @@ function IntakeFlow({
           Calm intake for high-stress plumbing calls.
         </h2>
         <p className="mt-4 max-w-md text-base leading-7 text-slate-600">
-          The mobile flow captures just enough customer-reported context for the office to prioritize a callback.
+          Share what happened so the team can review your request and call back with the right next step.
         </p>
       </div>
 
@@ -610,7 +667,7 @@ function ContactStep({
   return (
     <div>
       <p className="text-sm font-medium text-slate-500">Question 6 of 6</p>
-      <h3 className="mt-2 text-2xl font-semibold leading-tight text-slate-950">Contact and dispatch details</h3>
+      <h3 className="mt-2 text-2xl font-semibold leading-tight text-slate-950">Contact details</h3>
       <div className="mt-5 grid gap-4">
         <TextField label="Name" value={data.name} onChange={(value) => onUpdate("name", value)} required />
         <TextField label="Phone" value={data.phone} onChange={(value) => onUpdate("phone", value)} required />
@@ -777,6 +834,7 @@ function DispatchSummaryView({
           <Metric icon={CalendarClock} label="Submitted" value={formatSubmittedTime(data.submittedAt)} />
           <Metric icon={Clock3} label="Elapsed waiting" value={elapsedWaiting(data.submittedAt)} />
           <Metric icon={AlertTriangle} label="Customer urgency/tone" value={summary.tone} />
+          <Metric icon={Phone} label="Callback status" value={summary.priority === "Critical" ? "Needs immediate callback" : "Callback pending"} />
         </div>
 
         <div className="mt-6 grid gap-5">
