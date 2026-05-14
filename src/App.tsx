@@ -2,21 +2,30 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  CalendarClock,
   CheckCircle2,
   Clock3,
-  ClipboardList,
   Droplets,
   FileText,
+  Image,
   Mail,
   Phone,
   ShieldCheck,
   Smartphone,
+  Upload,
   Wrench,
 } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type View = "intake" | "confirmation" | "dispatch" | "notifications" | "queue";
-type Priority = "Critical" | "High" | "Medium" | "Low";
+type Priority = "Critical" | "Urgent" | "Routine";
+type CustomerTone = "High" | "Medium" | "Low";
+
+type UploadedMedia = {
+  name: string;
+  type: string;
+  url: string;
+};
 
 type IntakeData = {
   issueType: string;
@@ -24,10 +33,15 @@ type IntakeData = {
   shutoffAttempted: string;
   location: string;
   access: string;
+  propertyType: string;
   name: string;
   phone: string;
-  zip: string;
+  addressOrZip: string;
+  email: string;
+  bestTime: string;
   notes: string;
+  submittedAt: string;
+  media: UploadedMedia[];
 };
 
 type SummarySection = {
@@ -40,8 +54,26 @@ type DispatchSummary = {
   dispatcherSummary: SummarySection[];
   callbackFocus: string[];
   dispatchType: string;
+  responseTiming: string;
+  tone: CustomerTone;
+  revenueFlags: string[];
   missingInfo: string[];
 };
+
+type QueueItem = {
+  customer: string;
+  phone: string;
+  priority: Priority;
+  status: "New" | "Urgent" | "Callback Pending" | "Scheduled";
+  issue: string;
+  location: string;
+  addressOrZip: string;
+  received: string;
+  timing: string;
+};
+
+const demoPhoneDisplay = "(404) 555-0188";
+const demoPhoneHref = "tel:+14045550188";
 
 const initialIntake: IntakeData = {
   issueType: "Active leak",
@@ -49,10 +81,15 @@ const initialIntake: IntakeData = {
   shutoffAttempted: "No",
   location: "Bathroom",
   access: "Yes",
+  propertyType: "Single-family home",
   name: "Morgan Lee",
-  phone: "(404) 555-0188",
-  zip: "30004",
+  phone: demoPhoneDisplay,
+  addressOrZip: "30004",
+  email: "",
+  bestTime: "As soon as possible",
   notes: "Water is coming through the vanity cabinet and spreading into the hallway.",
+  submittedAt: new Date(Date.now() - 9 * 60 * 1000).toISOString(),
+  media: [],
 };
 
 const navItems: Array<{ id: View; label: string }> = [
@@ -91,8 +128,116 @@ const questions = [
   },
 ] as const;
 
-function titleCase(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+const hashRoutes: Record<string, View> = {
+  "#intake": "intake",
+  "#confirmation": "confirmation",
+  "#dispatch": "dispatch",
+  "#notifications": "notifications",
+  "#queue": "queue",
+  "#office": "queue",
+};
+
+const demoQueueItems: QueueItem[] = [
+  {
+    customer: "Linda Garcia",
+    phone: "(404) 555-0126",
+    priority: "Critical",
+    status: "Urgent",
+    issue: "Sewer backup",
+    location: "Basement",
+    addressOrZip: "30002",
+    received: "4 min ago",
+    timing: "Within 30 minutes",
+  },
+  {
+    customer: "Robert Miller",
+    phone: "(404) 555-0194",
+    priority: "Critical",
+    status: "New",
+    issue: "Burst pipe",
+    location: "Main line",
+    addressOrZip: "30004",
+    received: "9 min ago",
+    timing: "Within 30 minutes",
+  },
+  {
+    customer: "Angela Davis",
+    phone: "(404) 555-0181",
+    priority: "Urgent",
+    status: "Callback Pending",
+    issue: "Leaking water heater",
+    location: "Garage",
+    addressOrZip: "30009",
+    received: "18 min ago",
+    timing: "Same day",
+  },
+  {
+    customer: "Sarah Johnson",
+    phone: "(404) 555-0142",
+    priority: "Routine",
+    status: "Scheduled",
+    issue: "No hot water",
+    location: "Water heater",
+    addressOrZip: "30005",
+    received: "43 min ago",
+    timing: "Next available appointment",
+  },
+  {
+    customer: "Mike Chen",
+    phone: "(404) 555-0176",
+    priority: "Routine",
+    status: "Scheduled",
+    issue: "Clogged kitchen drain",
+    location: "Kitchen",
+    addressOrZip: "30008",
+    received: "1 hr ago",
+    timing: "Next available appointment",
+  },
+  {
+    customer: "Patel Family Trust",
+    phone: "(404) 555-0168",
+    priority: "Urgent",
+    status: "Callback Pending",
+    issue: "Multiple units without hot water",
+    location: "Apartment building",
+    addressOrZip: "30003",
+    received: "1 hr 16 min ago",
+    timing: "Same day",
+  },
+  {
+    customer: "Northside Cafe",
+    phone: "(404) 555-0153",
+    priority: "Urgent",
+    status: "Scheduled",
+    issue: "Restroom drain backup",
+    location: "Commercial restroom",
+    addressOrZip: "30007",
+    received: "2 hr ago",
+    timing: "Same day",
+  },
+];
+
+function getInitialView(): View {
+  if (typeof window === "undefined") return "intake";
+  return hashRoutes[window.location.hash] ?? "intake";
+}
+
+function formatSubmittedTime(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function elapsedWaiting(value: string) {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remaining = minutes % 60;
+  return remaining ? `${hours} hr ${remaining} min` : `${hours} hr`;
 }
 
 function createSummary(data: IntakeData): DispatchSummary {
@@ -101,8 +246,10 @@ function createSummary(data: IntakeData): DispatchSummary {
   const flowing = data.waterFlowing.toLowerCase();
   const shutoff = data.shutoffAttempted.toLowerCase();
   const access = data.access.toLowerCase();
+  const notes = data.notes.toLowerCase();
+  const property = data.propertyType.toLowerCase();
 
-  let priority: Priority = "Low";
+  let priority: Priority = "Routine";
 
   if (
     issue === "sewer backup" ||
@@ -116,19 +263,37 @@ function createSummary(data: IntakeData): DispatchSummary {
     location === "water heater" ||
     (issue === "clogged drain" && ["bathroom", "basement"].includes(location))
   ) {
-    priority = "High";
-  } else if (issue === "no hot water" || flowing === "not sure" || access === "not sure" || shutoff.includes("don't know")) {
-    priority = "Medium";
+    priority = "Urgent";
   }
 
   if (issue === "other") {
-    priority = "Low";
+    priority = "Routine";
   }
+
+  const responseTiming =
+    priority === "Critical" ? "Within 30 minutes" : priority === "Urgent" ? "Same day" : "Next available appointment";
+
+  const tone: CustomerTone =
+    priority === "Critical" || flowing === "yes" || /flood|panic|emergency|sewage|burst|ceiling|damage/.test(notes)
+      ? "High"
+      : priority === "Urgent" || flowing === "not sure" || access === "not sure" || shutoff.includes("don't know")
+        ? "Medium"
+        : "Low";
+
+  const revenueFlags = [
+    property.includes("commercial") ? "Commercial property" : "",
+    property.includes("multi-unit") || property.includes("apartment") ? "Multi-unit property" : "",
+    /ceiling|floor|wall|flood|damage|spreading|soaked/.test(notes) || (issue === "burst pipe" && flowing === "yes")
+      ? "Severe water damage concern"
+      : "",
+    /insurance|claim|adjuster/.test(notes) ? "Insurance claim potential" : "",
+    priority === "Critical" || issue === "sewer backup" || issue === "burst pipe" ? "Emergency/high-value job" : "",
+  ].filter(Boolean);
 
   const missingInfo = [
     !data.name.trim() ? "Customer name" : "",
     !data.phone.trim() ? "Customer phone" : "",
-    !data.zip.trim() ? "ZIP code" : "",
+    !data.addressOrZip.trim() ? "Address or ZIP" : "",
     data.waterFlowing === "Not sure" ? "Whether water is actively flowing" : "",
     data.access === "Not sure" ? "Technician access details" : "",
   ].filter(Boolean);
@@ -154,51 +319,72 @@ function createSummary(data: IntakeData): DispatchSummary {
       title: "Operational concern",
       items: [
         priority === "Critical"
-          ? "Suggested callback focus: confirm immediate access, current water status, and whether the main shutoff is known."
-          : priority === "High"
-            ? "Suggested callback focus: confirm access window, affected area, and same-day availability."
-            : "Suggested callback focus: confirm details needed to route the callback and scheduling next step.",
+          ? "Recommended response: confirm immediate access, current water status, and whether the main shutoff is known."
+          : priority === "Urgent"
+            ? "Recommended response: confirm access window, affected area, and same-day availability."
+            : "Recommended response: confirm details needed to route the callback and scheduling next step.",
       ],
     },
   ];
 
   const callbackFocus = [
-    "Confirm exact source or visible affected area without diagnosing the repair.",
+    "Confirm exact source or visible affected area without assuming the repair needed.",
     data.waterFlowing === "Yes" ? "Ask whether belongings can be moved away safely and whether the main shutoff is known." : "",
     data.access !== "Yes" ? "Clarify access constraints before assigning a technician." : "Confirm someone can meet the technician.",
-    data.zip.trim() ? `Verify service availability for ZIP ${data.zip}.` : "Collect service ZIP before dispatching.",
+    data.addressOrZip.trim() ? `Verify service availability for ${data.addressOrZip}.` : "Collect address or ZIP before dispatching.",
   ].filter(Boolean);
 
   const dispatchType =
     priority === "Critical"
       ? "Immediate emergency callback and priority dispatch review"
-      : priority === "High"
+      : priority === "Urgent"
         ? "Same-day callback with emergency availability check"
-        : priority === "Medium"
-          ? "Callback for urgency review and schedule fit"
-          : "Standard callback or estimate request review";
+        : "Standard callback or estimate request review";
 
-  return { priority, dispatcherSummary, callbackFocus, dispatchType, missingInfo };
+  return { priority, dispatcherSummary, callbackFocus, dispatchType, responseTiming, tone, revenueFlags, missingInfo };
 }
 
 function App() {
-  const [view, setView] = useState<View>("intake");
+  const [view, setView] = useState<View>(getInitialView);
   const [step, setStep] = useState(0);
   const [intake, setIntake] = useState<IntakeData>(initialIntake);
   const summary = useMemo(() => createSummary(intake), [intake]);
+
+  useEffect(() => {
+    const onHashChange = () => setView(getInitialView());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const navigate = (nextView: View) => {
+    setView(nextView);
+    const nextHash = nextView === "intake" ? "#intake" : `#${nextView}`;
+    if (window.location.hash !== nextHash) {
+      window.history.pushState(null, "", nextHash);
+    }
+  };
 
   const updateField = (field: keyof IntakeData, value: string) => {
     setIntake((current) => ({ ...current, [field]: value }));
   };
 
+  const updateMedia = (media: UploadedMedia[]) => {
+    setIntake((current) => {
+      current.media.forEach((item) => URL.revokeObjectURL(item.url));
+      return { ...current, media };
+    });
+  };
+
   const submitIntake = (event: FormEvent) => {
     event.preventDefault();
+    setIntake((current) => ({ ...current, submittedAt: new Date().toISOString() }));
     setView("confirmation");
+    window.history.pushState(null, "", "#confirmation");
   };
 
   return (
     <div className="min-h-screen bg-stone-100 text-slate-950">
-      <TopNav active={view} onSelect={setView} />
+      <TopNav active={view} onSelect={navigate} showInternal={view !== "intake" && view !== "confirmation"} />
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {view === "intake" && (
           <IntakeFlow
@@ -206,41 +392,50 @@ function App() {
             step={step}
             onStepChange={setStep}
             onUpdate={updateField}
+            onMediaChange={updateMedia}
             onSubmit={submitIntake}
           />
         )}
-        {view === "confirmation" && <Confirmation data={intake} onDispatch={() => setView("dispatch")} />}
-        {view === "dispatch" && <DispatchSummaryView data={intake} summary={summary} onNotifications={() => setView("notifications")} />}
+        {view === "confirmation" && <Confirmation data={intake} />}
+        {view === "dispatch" && <DispatchSummaryView data={intake} summary={summary} onNotifications={() => navigate("notifications")} />}
         {view === "notifications" && <NotificationPreview data={intake} summary={summary} />}
-        {view === "queue" && <OfficeQueue data={intake} summary={summary} onOpen={() => setView("dispatch")} />}
+        {view === "queue" && <OfficeQueue onOpen={() => navigate("dispatch")} />}
       </main>
+      <footer className="mx-auto max-w-7xl px-4 pb-6 text-center text-xs leading-5 text-slate-500 sm:px-6 lg:px-8">
+        Demo only. This tool summarizes customer-reported information and does not diagnose repairs, quote prices, or
+        send real messages.
+      </footer>
     </div>
   );
 }
 
-function TopNav({ active, onSelect }: { active: View; onSelect: (view: View) => void }) {
+function TopNav({ active, onSelect, showInternal }: { active: View; onSelect: (view: View) => void; showInternal: boolean }) {
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-red-700">Emergency intake demo</p>
-          <h1 className="text-xl font-semibold text-slate-950">Emergency plumbing intake workflow</h1>
+          <p className="text-sm font-semibold uppercase tracking-wide text-red-700">
+            {showInternal ? "Emergency intake demo" : "24/7 emergency intake"}
+          </p>
+          <h1 className="text-xl font-semibold text-slate-950">
+            {showInternal ? "Emergency plumbing intake workflow" : "Emergency Plumbing Help"}
+          </h1>
         </div>
-        <nav className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => onSelect(item.id)}
-              className={`whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition ${
-                active === item.id
-                  ? "bg-slate-950 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
+        {showInternal && (
+          <nav className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => onSelect(item.id)}
+                className={`whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition ${
+                  active === item.id ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+        )}
       </div>
     </header>
   );
@@ -251,12 +446,14 @@ function IntakeFlow({
   step,
   onStepChange,
   onUpdate,
+  onMediaChange,
   onSubmit,
 }: {
   data: IntakeData;
   step: number;
   onStepChange: (step: number) => void;
   onUpdate: (field: keyof IntakeData, value: string) => void;
+  onMediaChange: (media: UploadedMedia[]) => void;
   onSubmit: (event: FormEvent) => void;
 }) {
   const atContact = step === questions.length;
@@ -270,7 +467,7 @@ function IntakeFlow({
           Calm intake for high-stress plumbing calls.
         </h2>
         <p className="mt-4 max-w-md text-base leading-7 text-slate-600">
-          The mobile flow captures just enough context for the office to prioritize the lead and call back with focus.
+          The mobile flow captures just enough customer-reported context for the office to prioritize a callback.
         </p>
       </div>
 
@@ -281,7 +478,7 @@ function IntakeFlow({
               <p className="text-xs font-semibold uppercase tracking-wide text-red-100">24/7 intake</p>
               <h2 className="text-xl font-semibold">Emergency Plumbing Help</h2>
             </div>
-            <a href="tel:+14045550188" className="inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700">
+            <a href={demoPhoneHref} className="inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700">
               <Phone className="h-4 w-4" />
               Call Now
             </a>
@@ -305,7 +502,7 @@ function IntakeFlow({
                 onNext={() => onStepChange(Math.min(step + 1, questions.length))}
               />
             ) : (
-              <ContactStep data={data} onUpdate={onUpdate} />
+              <ContactStep data={data} onUpdate={onUpdate} onMediaChange={onMediaChange} />
             )}
           </div>
 
@@ -336,7 +533,7 @@ function IntakeFlow({
                 </button>
               )}
             </div>
-            <a href="tel:+14045550188" className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            <a href={demoPhoneHref} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
               <Phone className="h-4 w-4" />
               Call Now
             </a>
@@ -344,7 +541,7 @@ function IntakeFlow({
         </div>
       </form>
 
-      <StatusPanel data={data} />
+      <ReviewPanel data={data} />
     </section>
   );
 }
@@ -390,15 +587,62 @@ function QuestionStep({
   );
 }
 
-function ContactStep({ data, onUpdate }: { data: IntakeData; onUpdate: (field: keyof IntakeData, value: string) => void }) {
+function ContactStep({
+  data,
+  onUpdate,
+  onMediaChange,
+}: {
+  data: IntakeData;
+  onUpdate: (field: keyof IntakeData, value: string) => void;
+  onMediaChange: (media: UploadedMedia[]) => void;
+}) {
+  const handleFiles = (files: FileList | null) => {
+    if (!files) return;
+    onMediaChange(
+      Array.from(files).map((file) => ({
+        name: file.name,
+        type: file.type,
+        url: URL.createObjectURL(file),
+      })),
+    );
+  };
+
   return (
     <div>
       <p className="text-sm font-medium text-slate-500">Question 6 of 6</p>
-      <h3 className="mt-2 text-2xl font-semibold leading-tight text-slate-950">Contact details</h3>
+      <h3 className="mt-2 text-2xl font-semibold leading-tight text-slate-950">Contact and dispatch details</h3>
       <div className="mt-5 grid gap-4">
-        <TextField label="Name" value={data.name} onChange={(value) => onUpdate("name", value)} />
-        <TextField label="Phone" value={data.phone} onChange={(value) => onUpdate("phone", value)} />
-        <TextField label="ZIP code" value={data.zip} onChange={(value) => onUpdate("zip", value)} />
+        <TextField label="Name" value={data.name} onChange={(value) => onUpdate("name", value)} required />
+        <TextField label="Phone" value={data.phone} onChange={(value) => onUpdate("phone", value)} required />
+        <TextField label="Address or ZIP" value={data.addressOrZip} onChange={(value) => onUpdate("addressOrZip", value)} required />
+        <TextField label="Email (optional)" value={data.email} onChange={(value) => onUpdate("email", value)} type="email" />
+        <TextField label="Best time to call back (optional)" value={data.bestTime} onChange={(value) => onUpdate("bestTime", value)} />
+        <label className="grid gap-2">
+          <span className="text-sm font-semibold text-slate-700">Property type</span>
+          <select
+            value={data.propertyType}
+            onChange={(event) => onUpdate("propertyType", event.target.value)}
+            className="h-12 rounded-md border border-slate-300 px-3 text-base outline-none ring-red-700/20 focus:border-red-700 focus:ring-4"
+          >
+            <option>Single-family home</option>
+            <option>Commercial property</option>
+            <option>Multi-unit property</option>
+          </select>
+        </label>
+        <label className="grid gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-4">
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <Upload className="h-4 w-4" />
+            Photos or videos (optional)
+          </span>
+          <input
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            onChange={(event) => handleFiles(event.target.files)}
+            className="text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
+          />
+        </label>
+        {data.media.length > 0 && <MediaPreview media={data.media} compact />}
         <label className="grid gap-2">
           <span className="text-sm font-semibold text-slate-700">Optional notes</span>
           <textarea
@@ -412,11 +656,25 @@ function ContactStep({ data, onUpdate }: { data: IntakeData; onUpdate: (field: k
   );
 }
 
-function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function TextField({
+  label,
+  value,
+  onChange,
+  required = false,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+  type?: string;
+}) {
   return (
     <label className="grid gap-2">
       <span className="text-sm font-semibold text-slate-700">{label}</span>
       <input
+        type={type}
+        required={required}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="h-12 rounded-md border border-slate-300 px-3 text-base outline-none ring-red-700/20 focus:border-red-700 focus:ring-4"
@@ -425,23 +683,23 @@ function TextField({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function StatusPanel({ data }: { data: IntakeData }) {
+function ReviewPanel({ data }: { data: IntakeData }) {
   return (
     <aside className="hidden rounded-lg border border-slate-200 bg-white p-5 shadow-panel lg:block">
-      <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Captured so far</p>
+      <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Review your request</p>
       <dl className="mt-4 grid gap-3 text-sm">
         <Row label="Issue" value={data.issueType} />
         <Row label="Flowing" value={data.waterFlowing} />
         <Row label="Shutoff" value={data.shutoffAttempted} />
         <Row label="Location" value={data.location} />
         <Row label="Access" value={data.access} />
-        <Row label="ZIP" value={data.zip || "Not captured"} />
+        <Row label="Address/ZIP" value={data.addressOrZip || "Not captured"} />
       </dl>
     </aside>
   );
 }
 
-function Confirmation({ data, onDispatch }: { data: IntakeData; onDispatch: () => void }) {
+function Confirmation({ data }: { data: IntakeData }) {
   return (
     <section className="mx-auto grid max-w-4xl gap-6 py-8">
       <div className="rounded-lg border border-slate-200 bg-white p-8 shadow-panel">
@@ -450,9 +708,19 @@ function Confirmation({ data, onDispatch }: { data: IntakeData; onDispatch: () =
         </div>
         <h2 className="mt-6 text-3xl font-semibold tracking-tight text-slate-950">We received your emergency request</h2>
         <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-600">
-          Based on what you shared, this may require urgent attention. A team member should contact you shortly using
-          the phone number you provided.
+          A team member should contact you shortly using the phone number you provided. Your request will be reviewed
+          based on the reported issue and current service availability.
         </p>
+        <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
+          <h3 className="font-semibold text-slate-950">Review your request</h3>
+          <dl className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
+            <Row label="Name" value={data.name || "Missing"} />
+            <Row label="Phone" value={data.phone || "Missing"} />
+            <Row label="Address/ZIP" value={data.addressOrZip || "Missing"} />
+            <Row label="Reported issue" value={`${data.issueType} - ${data.location}`} />
+          </dl>
+          {data.media.length > 0 && <MediaPreview media={data.media} compact />}
+        </div>
         <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-5">
           <h3 className="font-semibold text-amber-950">While you wait</h3>
           <ul className="mt-3 grid gap-2 text-sm leading-6 text-amber-950">
@@ -462,17 +730,13 @@ function Confirmation({ data, onDispatch }: { data: IntakeData; onDispatch: () =
           </ul>
         </div>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <a href="tel:+14045550188" className="inline-flex items-center justify-center gap-2 rounded-md bg-red-700 px-5 py-3 font-semibold text-white hover:bg-red-800">
+          <a href={demoPhoneHref} className="inline-flex items-center justify-center gap-2 rounded-md bg-red-700 px-5 py-3 font-semibold text-white hover:bg-red-800">
             <Phone className="h-5 w-5" />
-            Call Now
+            Call Now {demoPhoneDisplay}
           </a>
-          <button onClick={onDispatch} className="inline-flex items-center justify-center gap-2 rounded-md bg-slate-950 px-5 py-3 font-semibold text-white hover:bg-slate-800">
-            <ClipboardList className="h-5 w-5" />
-            View Office Summary
-          </button>
         </div>
       </div>
-      <p className="text-center text-sm text-slate-500">Demo lead: {data.name || "Customer"} · {data.phone || "phone pending"}</p>
+      <p className="text-center text-sm text-slate-500">Request submitted for {data.name || "Customer"} · {data.phone || "phone pending"}</p>
     </section>
   );
 }
@@ -486,13 +750,19 @@ function DispatchSummaryView({
   summary: DispatchSummary;
   onNotifications: () => void;
 }) {
+  const priorityFrame: Record<Priority, string> = {
+    Critical: "border-red-500",
+    Urgent: "border-amber-400",
+    Routine: "border-emerald-500",
+  };
+
   return (
     <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-panel">
+      <div className={`rounded-lg border-l-4 bg-white p-6 shadow-panel ${priorityFrame[summary.priority]}`}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Office dispatch summary</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">New emergency plumbing intake</h2>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">AI-assisted summary for reported issue</h2>
           </div>
           <PriorityBadge priority={summary.priority} />
         </div>
@@ -503,22 +773,31 @@ function DispatchSummaryView({
           <Metric icon={AlertTriangle} label="Water actively flowing" value={data.waterFlowing} />
           <Metric icon={ShieldCheck} label="Shutoff attempted" value={data.shutoffAttempted} />
           <Metric icon={Clock3} label="Availability/access" value={data.access} />
-          <Metric icon={Phone} label="Phone and ZIP" value={`${data.phone || "Missing"} · ${data.zip || "Missing"}`} />
+          <Metric icon={Phone} label="Phone and service area" value={`${data.phone || "Missing"} · ${data.addressOrZip || "Missing"}`} />
+          <Metric icon={CalendarClock} label="Submitted" value={formatSubmittedTime(data.submittedAt)} />
+          <Metric icon={Clock3} label="Elapsed waiting" value={elapsedWaiting(data.submittedAt)} />
+          <Metric icon={AlertTriangle} label="Customer urgency/tone" value={summary.tone} />
         </div>
 
         <div className="mt-6 grid gap-5">
-          <InfoBlock title="Dispatch-ready intake summary" icon={FileText}>
+          <InfoBlock title="AI-assisted summary" icon={FileText}>
             <StructuredSummary sections={summary.dispatcherSummary} />
           </InfoBlock>
-          <InfoBlock title="Suggested callback focus" icon={Phone}>
+          <InfoBlock title="Recommended response" icon={Clock3}>
+            <p>{summary.responseTiming}</p>
+          </InfoBlock>
+          <InfoBlock title="Callback focus" icon={Phone}>
             <ul className="grid gap-2">
               {summary.callbackFocus.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
           </InfoBlock>
-          <InfoBlock title="Suggested dispatch type" icon={Wrench}>
+          <InfoBlock title="Dispatch review type" icon={Wrench}>
             <p>{summary.dispatchType}</p>
+          </InfoBlock>
+          <InfoBlock title="Customer media" icon={Image}>
+            {data.media.length ? <MediaPreview media={data.media} /> : <p>No photo or video files selected.</p>}
           </InfoBlock>
         </div>
       </div>
@@ -541,11 +820,20 @@ function DispatchSummaryView({
           </div>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-panel">
-          <h3 className="text-lg font-semibold text-slate-950">Demo guardrail</h3>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            This frontend only summarizes what the customer reports. It does not diagnose the repair, assign a price, or
-            send real messages.
-          </p>
+          <h3 className="text-lg font-semibold text-slate-950">Revenue opportunity flags</h3>
+          <div className="mt-4 grid gap-2">
+            {summary.revenueFlags.length ? (
+              summary.revenueFlags.map((item) => (
+                <span key={item} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800">
+                  {item}
+                </span>
+              ))
+            ) : (
+              <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                No high-value flags from customer-reported information
+              </span>
+            )}
+          </div>
           <button onClick={onNotifications} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-950 px-4 py-3 font-semibold text-white hover:bg-slate-800">
             <Mail className="h-5 w-5" />
             View notifications
@@ -566,9 +854,10 @@ function NotificationPreview({ data, summary }: { data: IntakeData; summary: Dis
           <p>Issue: {data.issueType}</p>
           <p>Customer: {data.name || "Name missing"}</p>
           <p>Phone: {data.phone || "Phone missing"}</p>
-          <p>ZIP: {data.zip || "Missing"}</p>
-          <p>Customer available now</p>
-          <p className="mt-3 font-semibold text-red-200">View dispatch summary</p>
+          <p>Service area: {data.addressOrZip || "Missing"}</p>
+          <p>Recommended response: {summary.responseTiming}</p>
+          <p>{data.bestTime || "Callback time not provided"}</p>
+          <p className="mt-3 font-semibold text-red-200">Open internal dispatch summary</p>
         </div>
       </PreviewCard>
 
@@ -597,13 +886,11 @@ function NotificationPreview({ data, summary }: { data: IntakeData; summary: Dis
   );
 }
 
-function OfficeQueue({ data, summary, onOpen }: { data: IntakeData; summary: DispatchSummary; onOpen: () => void }) {
-  const stages = [
-    { label: "New", count: 1 },
-    { label: "Urgent", count: summary.priority === "Critical" || summary.priority === "High" ? 1 : 0 },
-    { label: "Callback Pending", count: 2 },
-    { label: "Scheduled", count: 4 },
-  ];
+function OfficeQueue({ onOpen }: { onOpen: () => void }) {
+  const stages = ["New", "Urgent", "Callback Pending", "Scheduled"].map((label) => ({
+    label,
+    count: demoQueueItems.filter((item) => item.status === label).length,
+  }));
 
   return (
     <section className="grid gap-6">
@@ -618,6 +905,7 @@ function OfficeQueue({ data, summary, onOpen }: { data: IntakeData; summary: Dis
             <ArrowRight className="h-5 w-5" />
           </button>
         </div>
+
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {stages.map((stage) => (
             <div key={stage.label} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -629,16 +917,24 @@ function OfficeQueue({ data, summary, onOpen }: { data: IntakeData; summary: Dis
       </div>
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-panel">
-        <div className="grid grid-cols-1 gap-0 divide-y divide-slate-200 lg:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr_auto] lg:divide-x lg:divide-y-0">
-          <QueueCell label="Customer" value={data.name || "Name missing"} detail={data.phone || "Phone missing"} />
-          <QueueCell label="Priority" value={summary.priority} detail={summary.dispatchType} />
-          <QueueCell label="Issue" value={data.issueType} detail={data.location} />
-          <QueueCell label="ZIP" value={data.zip || "Missing"} detail="Received 2 min ago" />
-          <div className="p-4">
-            <button onClick={onOpen} className="w-full rounded-md border border-slate-300 px-4 py-3 font-semibold text-slate-800 hover:bg-slate-50">
-              Review Intake
-            </button>
-          </div>
+        <div className="divide-y divide-slate-200">
+          {demoQueueItems.map((item) => (
+            <div
+              key={`${item.customer}-${item.issue}`}
+              className="grid grid-cols-1 gap-0 lg:grid-cols-[1.15fr_0.75fr_0.9fr_0.7fr_0.8fr_auto]"
+            >
+              <QueueCell label="Customer" value={item.customer} detail={item.phone} />
+              <QueueCell label="Priority" value={item.priority} detail={item.timing} />
+              <QueueCell label="Issue" value={item.issue} detail={item.location} />
+              <QueueCell label="Service area" value={item.addressOrZip} detail={item.received} />
+              <QueueCell label="Status" value={item.status} detail="Office queue" />
+              <div className="p-4">
+                <button onClick={onOpen} className="w-full rounded-md border border-slate-300 px-4 py-3 font-semibold text-slate-800 hover:bg-slate-50">
+                  Review Intake
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </section>
@@ -648,9 +944,8 @@ function OfficeQueue({ data, summary, onOpen }: { data: IntakeData; summary: Dis
 function PriorityBadge({ priority }: { priority: Priority }) {
   const classes: Record<Priority, string> = {
     Critical: "border-red-200 bg-red-700 text-white",
-    High: "border-orange-200 bg-orange-100 text-orange-900",
-    Medium: "border-amber-200 bg-amber-100 text-amber-900",
-    Low: "border-slate-200 bg-slate-100 text-slate-800",
+    Urgent: "border-amber-200 bg-amber-100 text-amber-900",
+    Routine: "border-emerald-200 bg-emerald-100 text-emerald-900",
   };
 
   return (
@@ -726,7 +1021,24 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-2">
       <dt className="text-slate-500">{label}</dt>
-      <dd className="text-right font-semibold text-slate-900">{titleCase(value)}</dd>
+      <dd className="text-right font-semibold text-slate-900">{value}</dd>
+    </div>
+  );
+}
+
+function MediaPreview({ media, compact = false }: { media: UploadedMedia[]; compact?: boolean }) {
+  return (
+    <div className={`mt-3 grid gap-3 ${compact ? "" : "sm:grid-cols-2"}`}>
+      {media.map((item) => (
+        <div key={`${item.name}-${item.url}`} className="rounded-md border border-slate-200 bg-white p-3">
+          {item.type.startsWith("image/") ? (
+            <img src={item.url} alt={item.name} className="h-28 w-full rounded-md object-cover" />
+          ) : item.type.startsWith("video/") ? (
+            <video src={item.url} className="h-28 w-full rounded-md object-cover" controls />
+          ) : null}
+          <p className="mt-2 truncate text-sm font-medium text-slate-800">{item.name}</p>
+        </div>
+      ))}
     </div>
   );
 }
