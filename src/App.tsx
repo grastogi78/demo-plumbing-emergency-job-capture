@@ -432,7 +432,7 @@ function OfficeHeader({ onCustomerView }: { onCustomerView: () => void }) {
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
         <div>
           <p className="text-sm font-semibold uppercase tracking-wide text-red-700">Internal demo view</p>
-          <h1 className="text-xl font-semibold text-slate-950">Plumbing Office Operations Dashboard</h1>
+          <h1 className="text-xl font-semibold text-slate-950">Emergency Intake Dashboard</h1>
         </div>
         <button
           onClick={onCustomerView}
