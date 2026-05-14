@@ -1,6 +1,6 @@
 # Emergency Triage Demo
 
-A standalone React/Vite/Tailwind frontend demo for an AI-assisted emergency plumbing intake workflow.
+A standalone React/Vite/Tailwind frontend demo for an emergency plumbing intake workflow.
 
 ## Run Locally
 
@@ -26,7 +26,7 @@ npm run build
 ## What Is Mocked
 
 - No backend, authentication, database, email, SMS, or external APIs are used.
-- The "AI-generated" summary is generated locally with deterministic TypeScript rules.
+- The dispatch-ready intake summary is generated locally with deterministic TypeScript rules.
 - Priority scoring is simulated from the intake answers.
 - Customer and lead data are stored only in React state for the current browser session.
 

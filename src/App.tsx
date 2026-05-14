@@ -175,7 +175,7 @@ function createSummary(data: IntakeData): DispatchSummary {
       : priority === "High"
         ? "Same-day callback with emergency availability check"
         : priority === "Medium"
-          ? "Callback for triage and schedule fit"
+          ? "Callback for urgency review and schedule fit"
           : "Standard callback or estimate request review";
 
   return { priority, dispatcherSummary, callbackFocus, dispatchType, missingInfo };
@@ -223,8 +223,8 @@ function TopNav({ active, onSelect }: { active: View; onSelect: (view: View) => 
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-red-700">Emergency triage demo</p>
-          <h1 className="text-xl font-semibold text-slate-950">AI-assisted plumbing intake workflow</h1>
+          <p className="text-sm font-semibold uppercase tracking-wide text-red-700">Emergency intake demo</p>
+          <h1 className="text-xl font-semibold text-slate-950">Emergency plumbing intake workflow</h1>
         </div>
         <nav className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
           {navItems.map((item) => (
@@ -507,7 +507,7 @@ function DispatchSummaryView({
         </div>
 
         <div className="mt-6 grid gap-5">
-          <InfoBlock title="AI-generated dispatcher summary" icon={FileText}>
+          <InfoBlock title="Dispatch-ready intake summary" icon={FileText}>
             <StructuredSummary sections={summary.dispatcherSummary} />
           </InfoBlock>
           <InfoBlock title="Suggested callback focus" icon={Phone}>
