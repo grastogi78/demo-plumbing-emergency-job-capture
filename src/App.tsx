@@ -219,8 +219,24 @@ function isDemoMode() {
   return new URLSearchParams(window.location.search).get("demo") === "1";
 }
 
-function pathWithDemo(path: string) {
-  return isDemoMode() ? `${path}?demo=1` : path;
+function pathWithCurrentQuery(path: string, updates: Record<string, string | null> = {}) {
+  if (typeof window === "undefined") return path;
+  const params = new URLSearchParams(window.location.search);
+
+  Object.entries(updates).forEach(([key, value]) => {
+    if (value === null) {
+      params.delete(key);
+      return;
+    }
+    params.set(key, value);
+  });
+
+  if (path !== "/office") {
+    params.delete("tab");
+  }
+
+  const query = params.toString();
+  return `${path}${query ? `?${query}` : ""}`;
 }
 
 function getInitialOfficeTab(): OfficeTab {
@@ -366,7 +382,7 @@ function App() {
   const navigateRoute = (nextRoute: AppRoute) => {
     const nextPath = nextRoute === "customer" ? "/" : nextRoute === "office" ? "/office" : "/confirmation";
     setRoute(nextRoute);
-    window.history.pushState(null, "", pathWithDemo(nextPath));
+    window.history.pushState(null, "", pathWithCurrentQuery(nextPath));
   };
 
   const updateField = (field: keyof IntakeData, value: string) => {
@@ -384,7 +400,7 @@ function App() {
     event.preventDefault();
     setIntake((current) => ({ ...current, submittedAt: new Date().toISOString() }));
     setRoute("confirmation");
-    window.history.pushState(null, "", pathWithDemo("/confirmation"));
+    window.history.pushState(null, "", pathWithCurrentQuery("/confirmation"));
   };
 
   return (
@@ -461,10 +477,7 @@ function OfficeDashboard({ data, summary }: { data: IntakeData; summary: Dispatc
 
   const changeTab = (tab: OfficeTab) => {
     setActiveTab(tab);
-    const params = new URLSearchParams(window.location.search);
-    params.set("tab", tab);
-    const query = params.toString();
-    window.history.replaceState(null, "", `/office${query ? `?${query}` : ""}`);
+    window.history.replaceState(null, "", pathWithCurrentQuery("/office", { tab }));
   };
 
   return (
